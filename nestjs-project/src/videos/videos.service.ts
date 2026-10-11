@@ -5,12 +5,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 import { StorageService, type UploadPart } from '../storage/storage.service';
+import { VideoResponseDto } from './dto/video-response.dto';
 import { Video } from './entities/video.entity';
 import {
   InvalidUploadPartsException,
   UploadNotInitiatedException,
   VideoNotDraftException,
   VideoNotFoundException,
+  VideoNotReadyException,
   VideoTooLargeException,
 } from './exceptions/video.exception';
 import {
@@ -152,6 +154,67 @@ export class VideosService {
     );
 
     return saved;
+  }
+
+  async getById(
+    videoId: string,
+    channelId: string,
+  ): Promise<VideoResponseDto> {
+    const video = await this.videoRepository.findOne({
+      where: { id: videoId, channel_id: channelId },
+    });
+
+    if (!video) {
+      throw new VideoNotFoundException();
+    }
+
+    const thumbnailUrl =
+      video.status === VideoStatus.READY && video.thumbnail_key
+        ? await this.storageService.presignGetThumbnail(video.thumbnail_key)
+        : null;
+
+    return VideoResponseDto.fromEntity(video, thumbnailUrl);
+  }
+
+  async getStreamUrl(
+    videoId: string,
+    channelId: string,
+  ): Promise<{ url: string }> {
+    const video = await this.requireReadyVideo(videoId, channelId);
+
+    return { url: await this.storageService.presignGetObject(video.source_key) };
+  }
+
+  async getDownloadUrl(
+    videoId: string,
+    channelId: string,
+  ): Promise<{ url: string }> {
+    const video = await this.requireReadyVideo(videoId, channelId);
+
+    return {
+      url: await this.storageService.presignGetObject(video.source_key, {
+        download: true,
+      }),
+    };
+  }
+
+  private async requireReadyVideo(
+    videoId: string,
+    channelId: string,
+  ): Promise<Video> {
+    const video = await this.videoRepository.findOne({
+      where: { id: videoId, channel_id: channelId },
+    });
+
+    if (!video) {
+      throw new VideoNotFoundException();
+    }
+
+    if (video.status !== VideoStatus.READY) {
+      throw new VideoNotReadyException();
+    }
+
+    return video;
   }
 
   private areValidParts(parts: UploadPart[]): boolean {

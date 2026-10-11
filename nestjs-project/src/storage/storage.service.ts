@@ -1,4 +1,7 @@
+import { createWriteStream } from 'node:fs';
 import { basename } from 'node:path';
+import type { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { Inject, Injectable } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import {
@@ -7,6 +10,7 @@ import {
   CreateMultipartUploadCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  PutObjectCommand,
   S3Client,
   UploadPartCommand,
 } from '@aws-sdk/client-s3';
@@ -109,10 +113,55 @@ export class StorageService {
     key: string,
     options: PresignGetOptions = {},
   ): Promise<string> {
+    return this.presignGet(this.videosBucket, key, options);
+  }
+
+  async downloadObjectToFile(
+    key: string,
+    destination: string,
+  ): Promise<void> {
+    const { Body } = await this.client.send(
+      new GetObjectCommand({ Bucket: this.videosBucket, Key: key }),
+    );
+
+    if (!Body) {
+      throw new Error(`Object "${key}" has no body`);
+    }
+
+    await pipeline(Body as Readable, createWriteStream(destination));
+  }
+
+  async uploadThumbnail(
+    key: string,
+    body: Buffer,
+    contentType = 'image/jpeg',
+  ): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.thumbnailsBucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      }),
+    );
+  }
+
+  async presignGetThumbnail(
+    key: string,
+    options: PresignGetOptions = {},
+  ): Promise<string> {
+    return this.presignGet(this.thumbnailsBucket, key, options);
+  }
+
+  private async presignGet(
+    bucket: string,
+    key: string,
+    options: PresignGetOptions,
+  ): Promise<string> {
     return getSignedUrl(
       this.client,
       new GetObjectCommand({
-        Bucket: this.videosBucket,
+        Bucket: bucket,
         Key: key,
         ...(options.download
           ? {

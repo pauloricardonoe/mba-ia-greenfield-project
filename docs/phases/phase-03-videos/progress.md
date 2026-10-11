@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 6/11 completed
+**SIs:** 9/11 completed
 
 ### SI-03.1 — Dependências, Namespaces de Configuração e Infra no Compose
 - **Status:** completed
@@ -75,16 +75,36 @@
   - ACs verificados: worker sobe **sem portas publicadas**; conecta ao Redis (chave `bull:video-processing:meta` presente); `dist/worker.js` gerado. O **consumer** (processor) só é registrado no SI-03.7.
 
 ### SI-03.7 — Worker de Processamento (ffprobe + thumbnail + ciclo de status)
-- **Status:** pending
-- **Tests:** pending
+- **Status:** completed
+- **Tests:** 51/51 passing (video.processor.integration-spec.ts: 2, videos.service.integration-spec.ts, storage.service.integration-spec.ts, videos.module.spec.ts, worker.module.spec.ts, videos.e2e-spec.ts); `tsc --noEmit` exit 0
+- **Observations:**
+  - **Processor registrado no `WorkerModule`, não no `VideosModule`** (desvio da redação do plano): o SI-03.6 dizia que o `WorkerModule` importa "VideosModule (para o processor)", o que faria o processor ser provider do `VideosModule` — e aí a **API também consumiria jobs** (quando o `VideosModule` entrar no `AppModule` no SI-03.10), além de todo `app.init()` em teste subir um consumer. Registrando no `WorkerModule`, a API fica livre. Exigiu adicionar `exports: [TypeOrmModule]` ao `VideosModule` (mesmo padrão de `ChannelsModule`/`UsersModule`) para o worker injetar o repositório de `Video`.
+  - **Tratamento de falha:** o `WorkerHost` do `@nestjs/bullmq` **não tem** hook `onFailed` (só `process`); usei `@OnWorkerEvent('failed')`, marcando `status='error'` + `error_message` apenas quando `job.attemptsMade >= job.opts.attempts` (verificado empiricamente com `attempts: 1`).
+  - Instalado `@types/fluent-ffmpeg` (devDependency) — era a lacuna sinalizada no SI-03.1; sem ela o `tsc` falha no import do fluent-ffmpeg.
+  - ffmpeg/ffprobe instalados via `Dockerfile.dev` (`apt install -y procps curl ffmpeg`) → ffmpeg 5.1.9.
+  - `StorageService` ganhou `downloadObjectToFile` (stream para arquivo temporário — um vídeo de 10 GB não cabe em Buffer) e `uploadThumbnail`.
+  - Thumbnail extraída no timestamp de `1s`: um vídeo com duração < 1s falharia. Limitação anotada.
+  - O `tsc` pegou um problema real: `repository.update()` não tipa coluna `jsonb` (`_QueryDeepPartialEntity`) → o caminho de sucesso passou a carregar a entidade e usar `save()`, como no `VideosService`.
+  - Extraído `src/test/s3-test-client.ts` (o client S3 de teste estava sendo triplicado entre specs).
+  - **Caveat operacional:** parar o serviço `worker` ao rodar a suíte — ele consome as jobs enfileiradas pelos testes e corre com as asserções de status. Verifiquei que o container funciona de ponta a ponta (pegou uma job residual e rodou o ffprobe nela). Deixei o container **parado**.
+  - A asserção de job no spec do SI-03.5 agora consulta todos os estados (robusta a um consumer vivo).
 
 ### SI-03.8 — Metadados do Vídeo e URL de Thumbnail
-- **Status:** pending
-- **Tests:** pending
+- **Status:** completed
+- **Tests:** 48/48 passing (videos.service.integration-spec.ts, storage.service.integration-spec.ts, videos.module.spec.ts, videos.e2e-spec.ts); `tsc --noEmit` exit 0
+- **Observations:**
+  - Adicionado `StorageService.presignGetThumbnail`: a assinatura de `presignGetObject` do SI-03.3 só cobria o bucket de vídeos, e o SI-03.8 precisa assinar o bucket de thumbnails. Optei por um método dedicado (em vez de expor o nome do bucket ao `VideosService`); o presign comum foi extraído para um `presignGet` privado. Isso é a mudança de interface que eu já havia sinalizado no SI-03.3.
+  - `VideosService.getById` retorna o `VideoResponseDto` já montado (a `thumbnailUrl` exige presign assíncrono, que é responsabilidade do service).
+  - **Extensão além do plano:** adicionei casos de `GET /videos/:id` ao `test/videos.e2e-spec.ts`, embora a tabela de Tests do SI-03.8 liste apenas o spec do service — os ACs são HTTP-level. Mesma justificativa do SI-03.5.
 
 ### SI-03.9 — Streaming e Download (presigned GET + Range)
-- **Status:** pending
-- **Tests:** pending
+- **Status:** completed
+- **Tests:** 57/57 passing (videos.service.integration-spec.ts, videos.module.spec.ts, videos.e2e-spec.ts); `tsc --noEmit` exit 0
+- **Observations:**
+  - `getStreamUrl`/`getDownloadUrl` retornam `{ url }`; o controller é pass-through.
+  - Helper privado `requireReadyVideo` compartilhado pelos dois: 404 (não existe / não é do canal) antes do 409 (não está `ready`).
+  - A URL de download usa a opção `download: true` do `presignGetObject` (existia desde o SI-03.3, mas só era exercitada indiretamente) — agora verificada por comportamento: o `fetch` na URL devolve o header `Content-Disposition: attachment`.
+  - **Extensão além do plano:** casos de `stream`/`download` adicionados ao `test/videos.e2e-spec.ts` (a tabela de Tests do SI-03.9 lista só o spec do service) — mesma justificativa dos SIs anteriores.
 
 ### SI-03.10 — Wiring do VideosModule, Autorização e OpenAPI
 - **Status:** pending

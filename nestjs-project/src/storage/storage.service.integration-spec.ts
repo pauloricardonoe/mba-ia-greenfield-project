@@ -10,25 +10,13 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import storageConfig from '../config/storage.config';
+import {
+  createS3TestClient,
+  TEST_THUMBNAILS_BUCKET as thumbnailsBucket,
+  TEST_VIDEOS_BUCKET as videosBucket,
+} from '../test/s3-test-client';
 import { StorageModule } from './storage.module';
 import { StorageService } from './storage.service';
-
-const videosBucket =
-  process.env.S3_VIDEOS_BUCKET ?? 'streamtube-videos';
-const thumbnailsBucket =
-  process.env.S3_THUMBNAILS_BUCKET ?? 'streamtube-thumbnails';
-
-function createVerificationClient(): S3Client {
-  return new S3Client({
-    region: process.env.S3_REGION ?? 'us-east-1',
-    endpoint: `http://${process.env.S3_HOST ?? 'minio'}:${process.env.S3_PORT ?? 9000}`,
-    forcePathStyle: true,
-    credentials: {
-      accessKeyId: process.env.S3_ACCESS_KEY ?? '',
-      secretAccessKey: process.env.S3_SECRET_KEY ?? '',
-    },
-  });
-}
 
 describe('StorageService (integration)', () => {
   let module: TestingModule;
@@ -46,7 +34,7 @@ describe('StorageService (integration)', () => {
     }).compile();
 
     storageService = module.get(StorageService);
-    client = createVerificationClient();
+    client = createS3TestClient();
   });
 
   afterAll(async () => {

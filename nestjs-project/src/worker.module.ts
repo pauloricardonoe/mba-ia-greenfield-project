@@ -12,6 +12,7 @@ import swaggerConfig from './config/swagger.config';
 import { envValidationSchema } from './config/env.validation';
 import { StorageModule } from './storage/storage.module';
 import { UsersModule } from './users/users.module';
+import { VideoProcessor } from './videos/video.processor';
 import { VideosModule } from './videos/videos.module';
 
 @Module({
@@ -50,5 +51,7 @@ import { VideosModule } from './videos/videos.module';
     StorageModule,
     VideosModule,
   ],
+  // Only the worker registers the processor: the API must never consume jobs.
+  providers: [VideoProcessor],
 })
 export class WorkerModule {}

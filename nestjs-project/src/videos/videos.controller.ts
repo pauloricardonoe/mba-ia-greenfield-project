@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -21,6 +22,7 @@ import { ChannelNotFoundException } from '../common/exceptions/domain.exception'
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
 import { CompleteUploadDto } from './dto/complete-upload.dto';
 import { CreateVideoDto } from './dto/create-video.dto';
+import { VideoResponseDto } from './dto/video-response.dto';
 import { StartUploadDto } from './dto/start-upload.dto';
 import type { StartUploadResult } from './videos.service';
 import { VideosService } from './videos.service';
@@ -145,6 +147,117 @@ export class VideosController {
     const channel = await this.resolveChannel(user.sub);
 
     return this.videosService.startUpload(id, channel.id, dto.sizeBytes);
+  }
+
+  @Get(':id')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get video metadata',
+    description:
+      'Returns the metadata of a video owned by the authenticated user, including a presigned thumbnail URL when the video is ready.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Video metadata',
+    type: VideoResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Video not found or not owned by the requester',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async findOne(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<VideoResponseDto> {
+    const channel = await this.resolveChannel(user.sub);
+
+    return this.videosService.getById(id, channel.id);
+  }
+
+  @Get(':id/stream')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get a streaming URL',
+    description:
+      'Returns a short-lived presigned GET URL for the source object. The client streams directly from storage and may send HTTP Range headers (storage answers 206 Partial Content).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Presigned streaming URL',
+    schema: {
+      properties: {
+        url: { type: 'string', format: 'uri' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Video not found or not owned by the requester',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Video is not ready',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async stream(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<{ url: string }> {
+    const channel = await this.resolveChannel(user.sub);
+
+    return this.videosService.getStreamUrl(id, channel.id);
+  }
+
+  @Get(':id/download')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get a download URL',
+    description:
+      'Returns a short-lived presigned GET URL with a Content-Disposition attachment override so the browser downloads the file.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Presigned download URL',
+    schema: {
+      properties: {
+        url: { type: 'string', format: 'uri' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Video not found or not owned by the requester',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Video is not ready',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async download(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<{ url: string }> {
+    const channel = await this.resolveChannel(user.sub);
+
+    return this.videosService.getDownloadUrl(id, channel.id);
   }
 
   @Post(':id/upload-complete')

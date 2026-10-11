@@ -113,6 +113,12 @@ describe('Videos (e2e)', () => {
       .set('Authorization', `Bearer ${token}`);
   }
 
+  function get(path: string, token = accessToken) {
+    return request(app.getHttpServer())
+      .get(path)
+      .set('Authorization', `Bearer ${token}`);
+  }
+
   describe('POST /videos', () => {
     it('should reject a request without an access token', async () => {
       await request(app.getHttpServer())
@@ -308,6 +314,108 @@ describe('Videos (e2e)', () => {
           parts: [{ partNumber: 1, eTag: '"abc"' }],
         })
         .expect(404);
+
+      expect(response.body.error).toBe('VIDEO_NOT_FOUND');
+    });
+  });
+
+  describe('GET /videos/:id', () => {
+    it('should reject a request without an access token', async () => {
+      const id = await createDraft();
+
+      await request(app.getHttpServer()).get(`/videos/${id}`).expect(401);
+    });
+
+    it('should return the metadata of a draft', async () => {
+      const id = await createDraft();
+
+      const response = await get(`/videos/${id}`).expect(200);
+
+      expect(response.body.id).toBe(id);
+      expect(response.body.title).toBe('My video');
+      expect(response.body.status).toBe('draft');
+      expect(response.body.thumbnailUrl).toBeNull();
+      expect(typeof response.body.createdAt).toBe('string');
+      expect(typeof response.body.updatedAt).toBe('string');
+    });
+
+    it('should return a presigned thumbnailUrl for a ready video', async () => {
+      const id = await createDraft();
+      await videoRepository.update(id, {
+        status: VideoStatus.READY,
+        thumbnail_key: `thumbnails/${id}.jpg`,
+      });
+
+      const response = await get(`/videos/${id}`).expect(200);
+
+      expect(response.body.status).toBe('ready');
+      expect(response.body.thumbnailUrl).toContain('X-Amz-Signature');
+    });
+
+    it("should return 404 for a video owned by another channel", async () => {
+      const otherId = await createDraft(otherAccessToken);
+
+      const response = await get(`/videos/${otherId}`).expect(404);
+
+      expect(response.body.error).toBe('VIDEO_NOT_FOUND');
+    });
+
+    it('should return 404 for a video that does not exist', async () => {
+      const response = await get(`/videos/${randomUUID()}`).expect(404);
+
+      expect(response.body.error).toBe('VIDEO_NOT_FOUND');
+    });
+  });
+
+  describe('GET /videos/:id/stream and /download', () => {
+    async function createReadyDraft(): Promise<string> {
+      const id = await createDraft();
+      await videoRepository.update(id, {
+        status: VideoStatus.READY,
+        thumbnail_key: `thumbnails/${id}.jpg`,
+      });
+      return id;
+    }
+
+    it('should reject a stream request without an access token', async () => {
+      const id = await createReadyDraft();
+
+      await request(app.getHttpServer())
+        .get(`/videos/${id}/stream`)
+        .expect(401);
+    });
+
+    it('should return a presigned streaming URL for a ready video', async () => {
+      const id = await createReadyDraft();
+
+      const response = await get(`/videos/${id}/stream`).expect(200);
+
+      expect(response.body.url).toContain('X-Amz-Signature');
+    });
+
+    it('should return a download URL with an attachment disposition', async () => {
+      const id = await createReadyDraft();
+
+      const response = await get(`/videos/${id}/download`).expect(200);
+
+      expect(decodeURIComponent(response.body.url)).toContain('attachment');
+    });
+
+    it.each(['stream', 'download'])(
+      'should return 409 for a non-ready video (%s)',
+      async (route) => {
+        const id = await createDraft();
+
+        const response = await get(`/videos/${id}/${route}`).expect(409);
+
+        expect(response.body.error).toBe('VIDEO_NOT_READY');
+      },
+    );
+
+    it("should return 404 for another channel's video", async () => {
+      const otherId = await createDraft(otherAccessToken);
+
+      const response = await get(`/videos/${otherId}/stream`).expect(404);
 
       expect(response.body.error).toBe('VIDEO_NOT_FOUND');
     });

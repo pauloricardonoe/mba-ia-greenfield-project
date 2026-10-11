@@ -25,3 +25,9 @@ export const UPLOAD_PART_SIZE = 100 * 1024 * 1024;
 
 /** S3 multipart uploads are limited to 10 000 parts. */
 export const MAX_UPLOAD_PARTS = 10000;
+
+/** Payload of the `video.processing.requested` job. */
+export interface VideoJobData {
+  videoId: string;
+  sourceKey: string;
+}
