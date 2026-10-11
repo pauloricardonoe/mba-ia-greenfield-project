@@ -26,6 +26,13 @@ export function createTestDataSource(
 export async function cleanAllTables(dataSource: DataSource): Promise<void> {
   await dataSource.query('DELETE FROM "refresh_tokens"');
   await dataSource.query('DELETE FROM "verification_tokens"');
+  // `videos` only exists in test data sources that register the Video entity.
+  const [{ exists }] = await dataSource.query<{ exists: boolean }[]>(
+    `SELECT to_regclass('public.videos') IS NOT NULL AS exists`,
+  );
+  if (exists) {
+    await dataSource.query('DELETE FROM "videos"');
+  }
   await dataSource.query('DELETE FROM "channels"');
   await dataSource.query('DELETE FROM "users"');
 }
