@@ -49,6 +49,8 @@ _Subprojects in scope:_
 
 **Decision:** A (BullMQ + Redis)
 
+**Libraries:** `bullmq@^6.3.11`, `@nestjs/bullmq@^11.0.5`
+
 ---
 
 ## TD-02: Large-File Upload Strategy (10GB)
@@ -80,6 +82,8 @@ _Subprojects in scope:_
 
 **Decision:** A (Presigned multipart)
 
+**Libraries:** —
+
 ---
 
 ## TD-03: Object Storage SDK & Bucket Layout
@@ -105,6 +109,8 @@ _Subprojects in scope:_
 **Recommendation:** **A (`@aws-sdk/client-s3`)** — the phase explicitly anticipates swapping to AWS S3 in production; using the AWS SDK keeps app code provider-agnostic while the endpoint simply points at MinIO locally. Bucket layout (implementation detail resolved in the plan): two buckets — `streamtube-videos` and `streamtube-thumbnails` — with opaque keys (`videos/{videoId}/{uuid}.mp4`, `thumbnails/{videoId}.jpg`), created/ensured on API startup.
 
 **Decision:** A (@aws-sdk/client-s3)
+
+**Libraries:** `@aws-sdk/client-s3@^3.1146.0`, `@aws-sdk/s3-request-presigner@^3.1146.0`
 
 ---
 
@@ -137,6 +143,8 @@ _Subprojects in scope:_
 
 **Decision:** A (Separate worker service, shared image)
 
+**Libraries:** —
+
 ---
 
 ## TD-05: Media Processing Tooling (FFmpeg)
@@ -167,6 +175,8 @@ _Subprojects in scope:_
 **Recommendation:** **A (system FFmpeg + `fluent-ffmpeg`)** — keeps the worker image self-contained with official binaries and gives an ergonomic, well-documented API for the two required tasks (metadata + thumbnail).
 
 **Decision:** A (System FFmpeg + fluent-ffmpeg)
+
+**Libraries:** `fluent-ffmpeg@^2.1.3` (system `ffmpeg`/`ffprobe` via apt in the worker image)
 
 ---
 
@@ -199,6 +209,8 @@ _Subprojects in scope:_
 
 **Decision:** A (Linear lifecycle + retries + error)
 
+**Libraries:** —
+
 ---
 
 ## TD-07: Unique Video URL Strategy
@@ -230,6 +242,8 @@ _Subprojects in scope:_
 
 **Decision:** A (Opaque UUID)
 
+**Libraries:** —
+
 ---
 
 ## TD-08: Streaming & Download Delivery
@@ -255,6 +269,8 @@ _Subprojects in scope:_
 **Recommendation:** **A (presigned GET with Range/206)** — keeps the API out of the media path entirely, leverages native object-storage Range support, and expresses download as an attachment-disposition presigned URL.
 
 **Decision:** A (Presigned GET + Range/206)
+
+**Libraries:** —
 
 ---
 
