@@ -11,10 +11,7 @@ import { DomainExceptionFilter } from '../src/common/filters/domain-exception.fi
 import { ValidationExceptionFilter } from '../src/common/filters/validation-exception.filter';
 import { cleanAllTables } from '../src/test/create-test-data-source';
 import { Video } from '../src/videos/entities/video.entity';
-import {
-  MAX_UPLOAD_BYTES,
-  VideoStatus,
-} from '../src/videos/videos.constants';
+import { MAX_UPLOAD_BYTES, VideoStatus } from '../src/videos/videos.constants';
 
 const PASSWORD = 'password123';
 
@@ -135,7 +132,9 @@ describe('Videos (e2e)', () => {
     });
 
     it('should reject a title longer than 200 characters', async () => {
-      await post('/videos').send({ title: 'a'.repeat(201) }).expect(400);
+      await post('/videos')
+        .send({ title: 'a'.repeat(201) })
+        .expect(400);
     });
 
     it('should create a draft owned by the authenticated user', async () => {
@@ -168,7 +167,9 @@ describe('Videos (e2e)', () => {
     it('should reject a sizeBytes below 1', async () => {
       const id = await createDraft();
 
-      await post(`/videos/${id}/upload-urls`).send({ sizeBytes: 0 }).expect(400);
+      await post(`/videos/${id}/upload-urls`)
+        .send({ sizeBytes: 0 })
+        .expect(400);
     });
 
     it('should return one presigned URL per part', async () => {
@@ -207,7 +208,7 @@ describe('Videos (e2e)', () => {
       expect(response.body.error).toBe('VIDEO_NOT_DRAFT');
     });
 
-    it("should return 404 for a video owned by another channel", async () => {
+    it('should return 404 for a video owned by another channel', async () => {
       const otherId = await createDraft(otherAccessToken);
 
       const response = await post(`/videos/${otherId}/upload-urls`)
@@ -284,7 +285,10 @@ describe('Videos (e2e)', () => {
       expect(eTag).toBeTruthy();
 
       const response = await post(`/videos/${id}/upload-complete`)
-        .send({ uploadId: start.uploadId, parts: [{ partNumber: 1, eTag: eTag! }] })
+        .send({
+          uploadId: start.uploadId,
+          parts: [{ partNumber: 1, eTag: eTag! }],
+        })
         .expect(200);
 
       expect(response.body.id).toBe(id);
@@ -304,7 +308,7 @@ describe('Videos (e2e)', () => {
       expect(response.body.error).toBe('UPLOAD_NOT_INITIATED');
     });
 
-    it("should return 404 for a video owned by another channel", async () => {
+    it('should return 404 for a video owned by another channel', async () => {
       const otherId = await createDraft(otherAccessToken);
 
       const response = await post(`/videos/${otherId}/upload-complete`)
@@ -351,7 +355,7 @@ describe('Videos (e2e)', () => {
       expect(response.body.thumbnailUrl).toContain('X-Amz-Signature');
     });
 
-    it("should return 404 for a video owned by another channel", async () => {
+    it('should return 404 for a video owned by another channel', async () => {
       const otherId = await createDraft(otherAccessToken);
 
       const response = await get(`/videos/${otherId}`).expect(404);

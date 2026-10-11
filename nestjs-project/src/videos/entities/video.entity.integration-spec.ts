@@ -136,7 +136,12 @@ describe('Video entity (integration)', () => {
 
   it('should round-trip jsonb metadata and numeric duration_seconds', async () => {
     const channel = await createChannel();
-    const metadata = { codec: 'h264', width: 1920, height: 1080, bitrate: 4500 };
+    const metadata = {
+      codec: 'h264',
+      width: 1920,
+      height: 1080,
+      bitrate: 4500,
+    };
 
     const saved = await videoRepository.save(
       buildVideo(channel, { metadata, duration_seconds: 12.5 }),

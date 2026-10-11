@@ -116,10 +116,7 @@ export class StorageService {
     return this.presignGet(this.videosBucket, key, options);
   }
 
-  async downloadObjectToFile(
-    key: string,
-    destination: string,
-  ): Promise<void> {
+  async downloadObjectToFile(key: string, destination: string): Promise<void> {
     const { Body } = await this.client.send(
       new GetObjectCommand({ Bucket: this.videosBucket, Key: key }),
     );

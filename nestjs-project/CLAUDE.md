@@ -33,7 +33,11 @@ docker compose exec nestjs-api npm run start:dev
 
 Services:
 - `nestjs-api` — NestJS API, port `3000`
-- `db` — PostgreSQL 17, port `5432`, database `streamtube`, user/password `streamtube`
+- `worker` — video processing worker (no HTTP), consumes the `video-processing` queue
+- `db` — PostgreSQL 17, container port `5432` (host `${DB_HOST_PORT:-5432}`), database `streamtube`, user/password `streamtube`
+- `mailpit` — SMTP capture + web UI, ports `1025` (SMTP) and `8025` (UI)
+- `minio` — S3-compatible object storage, ports `9000` (API) and `9001` (console)
+- `redis` — BullMQ backend, container port `6379` (host `${REDIS_HOST_PORT:-6379}`)
 
 All verification and teardown commands run on the **host machine**:
 
@@ -148,6 +152,33 @@ NestJS with standard module structure. Source lives in `src/`, compiled output i
 
 - Each domain feature gets its own module (e.g., `UsersModule`, `VideosModule`) registered in `AppModule`
 - Controllers handle HTTP routing; Services hold business logic; both are scoped to their module
+
+## Videos
+
+Video upload, processing and playback live in `src/videos/`.
+
+**Endpoints** — all require a valid access token (global JWT guard; no video route uses `@Public()`):
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/videos` | pre-register a draft |
+| POST | `/videos/:id/upload-urls` | start a multipart upload; returns one presigned PUT URL per part |
+| POST | `/videos/:id/upload-complete` | complete the multipart upload and enqueue processing |
+| GET | `/videos/:id` | metadata, plus a presigned `thumbnailUrl` when `ready` |
+| GET | `/videos/:id/stream` | presigned GET URL for streaming (storage answers `Range` with 206) |
+| GET | `/videos/:id/download` | presigned GET URL with `Content-Disposition: attachment` |
+
+**Upload:** the API never holds the file bytes. `upload-urls` starts an S3 multipart upload and returns presigned part URLs (100 MB parts, 10 GiB cap); the client uploads the parts directly to storage and then reports them to `upload-complete`.
+
+**Queue and worker:** `upload-complete` enqueues a `process` job on the BullMQ queue `video-processing` (Redis-backed, 3 attempts with exponential backoff). `VideoProcessor` (`src/videos/video.processor.ts`) is registered **only** by `WorkerModule` (`src/worker.module.ts`), bootstrapped by `src/worker.ts` (`npm run start:worker`) — the API never consumes the queue. The worker downloads the object, runs `ffprobe` for duration/metadata, generates a thumbnail with `ffmpeg`, and flips the status to `ready` — or to `error` with `error_message` once the attempts are exhausted.
+
+**Storage:** MinIO (S3-compatible), two buckets ensured on startup by `StorageModule`:
+- `streamtube-videos` — source objects, key layout `videos/{videoId}/{uuid}.mp4`
+- `streamtube-thumbnails` — generated thumbnails, key layout `thumbnails/{videoId}.jpg`
+
+**Status lifecycle:** `draft` → `processing` → `ready` | `error`.
+
+**Running the tests:** stop the worker service first (`docker compose stop worker`). A live consumer picks up the jobs the tests enqueue and races with the status assertions in the videos specs.
 
 ## Code Conventions
 

@@ -123,7 +123,11 @@ describe('VideoProcessor (integration)', () => {
 
   async function uploadSource(key: string, body: Buffer): Promise<void> {
     await client.send(
-      new PutObjectCommand({ Bucket: TEST_VIDEOS_BUCKET, Key: key, Body: body }),
+      new PutObjectCommand({
+        Bucket: TEST_VIDEOS_BUCKET,
+        Key: key,
+        Body: body,
+      }),
     );
     createdObjects.push({ bucket: TEST_VIDEOS_BUCKET, key });
   }

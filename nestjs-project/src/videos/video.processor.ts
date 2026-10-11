@@ -9,7 +9,11 @@ import ffmpeg from 'fluent-ffmpeg';
 import { Repository } from 'typeorm';
 import { StorageService } from '../storage/storage.service';
 import { Video } from './entities/video.entity';
-import { VIDEO_QUEUE, VideoStatus, type VideoJobData } from './videos.constants';
+import {
+  VIDEO_QUEUE,
+  VideoStatus,
+  type VideoJobData,
+} from './videos.constants';
 
 interface ProbeResult {
   durationSeconds: number | null;
@@ -92,7 +96,7 @@ function probeVideo(filePath: string): Promise<ProbeResult> {
   return new Promise((resolve, reject) => {
     ffmpeg.ffprobe(filePath, (error, data) => {
       if (error) {
-        reject(error);
+        reject(error instanceof Error ? error : new Error(String(error)));
         return;
       }
 
@@ -126,6 +130,8 @@ function renderThumbnail(input: string, folder: string): Promise<void> {
         folder,
       })
       .on('end', () => resolve())
-      .on('error', (error) => reject(error));
+      .on('error', (error) =>
+        reject(error instanceof Error ? error : new Error(String(error))),
+      );
   });
 }

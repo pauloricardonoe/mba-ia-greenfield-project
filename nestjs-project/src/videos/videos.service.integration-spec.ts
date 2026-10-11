@@ -111,9 +111,7 @@ describe('VideosService (integration)', () => {
       ),
       ...createdThumbnails.map((key) =>
         client
-          .send(
-            new DeleteObjectCommand({ Bucket: thumbnailsBucket, Key: key }),
-          )
+          .send(new DeleteObjectCommand({ Bucket: thumbnailsBucket, Key: key }))
           .catch(() => undefined),
       ),
     ]);
@@ -388,9 +386,9 @@ describe('VideosService (integration)', () => {
     const stranger = await createChannel();
     const draft = await videosService.createDraft(owner.id, 'Private');
 
-    await expect(
-      videosService.getById(draft.id, stranger.id),
-    ).rejects.toThrow(VideoNotFoundException);
+    await expect(videosService.getById(draft.id, stranger.id)).rejects.toThrow(
+      VideoNotFoundException,
+    );
   });
 
   it('should reject metadata for a video that does not exist', async () => {

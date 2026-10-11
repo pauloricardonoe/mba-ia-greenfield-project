@@ -41,9 +41,7 @@ describe('StorageService (integration)', () => {
     await Promise.all(
       createdKeys.map((key) =>
         client
-          .send(
-            new DeleteObjectCommand({ Bucket: videosBucket, Key: key }),
-          )
+          .send(new DeleteObjectCommand({ Bucket: videosBucket, Key: key }))
           .catch(() => undefined),
       ),
     );

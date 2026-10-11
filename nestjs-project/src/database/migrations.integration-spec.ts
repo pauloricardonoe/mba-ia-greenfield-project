@@ -37,6 +37,13 @@ describe('Database migrations (integration)', () => {
       ),
       dataSource.query(`DROP TABLE IF EXISTS "migrations" CASCADE`),
     ]);
+
+    // PostgreSQL enum types are not dropped with their tables, so a type left
+    // behind by a previous run (or by a suite using synchronize) makes the
+    // CREATE TYPE in the migrations fail. Reset them with the schema.
+    await dataSource.query(
+      `DROP TYPE IF EXISTS "verification_tokens_type_enum" CASCADE`,
+    );
   });
 
   afterAll(async () => {

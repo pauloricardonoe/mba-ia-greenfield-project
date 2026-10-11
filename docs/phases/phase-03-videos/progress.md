@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
-**Status:** in_progress
-**SIs:** 10/11 completed
+**Status:** completed
+**SIs:** 11/11 completed
 
 ### SI-03.1 — Dependências, Namespaces de Configuração e Infra no Compose
 - **Status:** completed
@@ -120,5 +120,41 @@
   - A suíte e2e completa foi rodada porque a mudança é no `AppModule` e afeta todos os specs — tudo verde.
 
 ### SI-03.11 — Documentação da Fase (CLAUDE.md seção de vídeos)
-- **Status:** pending
-- **Tests:** pending
+- **Status:** completed
+- **Tests:** no tests (documentação)
+- **Observations:**
+  - `nestjs-project/CLAUDE.md`: nova seção **Videos** (módulo `src/videos/`, os 6 endpoints, upload multipart, fila `video-processing` + worker, buckets MinIO e layout de chaves, ciclo de status) e lista de serviços do Compose atualizada com `worker`, `mailpit`, `minio` e `redis`.
+  - `CLAUDE.md` da raiz: `Message Queue (TBD)` → **BullMQ on Redis**; Object Storage agora explicitamente **MinIO (S3-compatible)**.
+  - Documentada a nota operacional de parar o serviço `worker` ao rodar a suíte.
+  - ACs verificados: todos os arquivos/constantes citados existem (`video.processor.ts`, `worker.module.ts`, `worker.ts`, `npm run start:worker`, `attempts: 3`, 100 MB / 10 GiB) e a lista de serviços bate com o `compose.yaml`.
+  - **Fora de escopo (notado):** o `CLAUDE.md` da raiz ainda diz que `next-frontend/` (Next.js) "not yet initialized", o que está desatualizado desde a fase 02. Não alterei (fora do escopo deste SI).
+
+## Final verification
+
+| Check | Result |
+|---|---|
+| Unit + integration (`npm test -- --runInBand`) | **PASS** — 188 tests, 29 suites |
+| E2E (`npm run test:e2e`) | **PASS** — 83 tests, 4 suites |
+| Type-check (`npx tsc --noEmit`) | **PASS** — exit 0 |
+| Build (`npm run build`) | **PASS** — exit 0 |
+| Lint (`npm run lint`) | **FAIL** — 234 problems (193 errors, 41 warnings). 187 deles em arquivos que esta fase **não tocou** (incluindo código de produção `src/channels/channels.service.ts`) → baseline pré-existente. Decisão do usuário: deixar como está. |
+| End-to-end manual (upload → processamento → streaming) | **NÃO EXECUTADO** — o servidor da API não foi subido (exige pedido explícito do usuário). |
+
+**Correções aplicadas na final verification:**
+
+- `src/config/env.validation.integration-spec.ts` — o fixture `requiredEnv` não incluía `S3_ACCESS_KEY`/`S3_SECRET_KEY`, obrigatórios desde o SI-03.1. Regressão da fase 03 que passou batido (o SI-03.1 não tinha testes e a skill roda só os testes do SI).
+- `src/database/migrations.integration-spec.ts` — adicionado `DROP TYPE IF EXISTS "verification_tokens_type_enum"`: o spec dropava as tabelas mas não o tipo enum, então um tipo deixado por qualquer suíte com `synchronize` quebrava o `CREATE TYPE`. Bug latente pré-existente, exposto por esta fase (o jest ordena as suítes por tamanho de arquivo, e os specs novos empurraram o de migrations para depois).
+- `src/videos/video.processor.ts` — 1 erro de lint (`prefer-promise-reject-errors`).
+
+## Follow-ups (fora do escopo desta fase)
+
+- **Lint**: baseline quebrado (187 problemas em arquivos pré-existentes, incluindo produção). O `npm run lint` não passa e não passa desde antes desta fase.
+- **Relação inversa**: `Channel` não tem `@OneToMany(() => Video)` (o plano só especifica o lado owning); decidir se adiciona (exige incluir `Video` nos `DataSource` de teste existentes).
+- **Duplicação de infra**: `WorkerModule` repete o `ConfigModule.forRoot` e o `TypeOrmModule.forRootAsync` do `AppModule` — extrair módulos compartilhados.
+- **Dev compose**: `npm run start:worker` roda `node dist/worker.js`, que exige um `npm run build` prévio (clone limpo quebra o worker).
+- **Conflito de plano**: `sizeBytes > 10 GiB` — Validation Rules pedem 400, Error Catalog/AC pedem 413; implementado 413. Revisar o plano.
+- **Exceções de domínio em dois lugares**: `src/videos/exceptions/` (fase 03) vs `src/common/exceptions/domain.exception.ts` (fase 02).
+- **Thumbnail**: extraída no timestamp de 1s — vídeos com duração < 1s falhariam.
+- **MinIO**: o plano ainda cita `minio/minio`; a imagem usada é `ghcr.io/chainguard-images/minio:latest-dev` (o `minio/minio` não é puxável neste host).
+- **CLAUDE.md raiz**: ainda diz que `next-frontend/` "not yet initialized" (desatualizado desde a fase 02).
+- **Suíte de testes**: o e2e deixa um multipart upload incompleto no MinIO; e o serviço `worker` precisa ficar parado durante a suíte (documentado no `nestjs-project/CLAUDE.md`).

@@ -107,10 +107,7 @@ export class VideosService {
   }
 
   private computePartSize(sizeBytes: number): number {
-    return Math.max(
-      UPLOAD_PART_SIZE,
-      Math.ceil(sizeBytes / MAX_UPLOAD_PARTS),
-    );
+    return Math.max(UPLOAD_PART_SIZE, Math.ceil(sizeBytes / MAX_UPLOAD_PARTS));
   }
 
   async completeUpload(
@@ -156,10 +153,7 @@ export class VideosService {
     return saved;
   }
 
-  async getById(
-    videoId: string,
-    channelId: string,
-  ): Promise<VideoResponseDto> {
+  async getById(videoId: string, channelId: string): Promise<VideoResponseDto> {
     const video = await this.videoRepository.findOne({
       where: { id: videoId, channel_id: channelId },
     });
@@ -182,7 +176,9 @@ export class VideosService {
   ): Promise<{ url: string }> {
     const video = await this.requireReadyVideo(videoId, channelId);
 
-    return { url: await this.storageService.presignGetObject(video.source_key) };
+    return {
+      url: await this.storageService.presignGetObject(video.source_key),
+    };
   }
 
   async getDownloadUrl(
