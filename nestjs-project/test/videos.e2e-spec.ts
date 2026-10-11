@@ -15,7 +15,6 @@ import {
   MAX_UPLOAD_BYTES,
   VideoStatus,
 } from '../src/videos/videos.constants';
-import { VideosModule } from '../src/videos/videos.module';
 
 const PASSWORD = 'password123';
 
@@ -29,7 +28,7 @@ describe('Videos (e2e)', () => {
 
   beforeAll(async () => {
     const moduleFixture = await Test.createTestingModule({
-      imports: [AppModule, VideosModule],
+      imports: [AppModule],
     }).compile();
 
     app = moduleFixture.createNestApplication();

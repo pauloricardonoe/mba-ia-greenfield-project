@@ -128,4 +128,39 @@ describe('exportSpec (integration)', () => {
       }
     }
   });
+
+  it('includes the six video endpoints, documented and protected', () => {
+    const paths = document.paths as Record<
+      string,
+      Record<string, Record<string, unknown>>
+    >;
+    const videoEndpoints = [
+      { path: '/videos', method: 'post' },
+      { path: '/videos/{id}', method: 'get' },
+      { path: '/videos/{id}/upload-urls', method: 'post' },
+      { path: '/videos/{id}/upload-complete', method: 'post' },
+      { path: '/videos/{id}/stream', method: 'get' },
+      { path: '/videos/{id}/download', method: 'get' },
+    ];
+
+    for (const { path, method } of videoEndpoints) {
+      const operation = paths[path]?.[method];
+
+      expect(operation).toBeDefined();
+      expect(typeof operation?.summary).toBe('string');
+      expect((operation?.summary as string).length).toBeGreaterThan(0);
+
+      const security = operation?.security as Array<Record<string, unknown>>;
+      expect(
+        security?.some((requirement) => 'access-token' in requirement),
+      ).toBe(true);
+    }
+  });
+
+  it('documents the video response schema', () => {
+    const components = document.components as Record<string, unknown>;
+    const schemas = components.schemas as Record<string, unknown>;
+
+    expect(schemas['VideoResponseDto']).toBeDefined();
+  });
 });

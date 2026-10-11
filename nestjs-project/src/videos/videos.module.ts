@@ -5,6 +5,7 @@ import type { ConfigType } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ChannelsModule } from '../channels/channels.module';
 import queueConfig from '../config/queue.config';
+import { StorageModule } from '../storage/storage.module';
 import { Video } from './entities/video.entity';
 import { VIDEO_QUEUE } from './videos.constants';
 import { VideosController } from './videos.controller';
@@ -13,6 +14,7 @@ import { VideosService } from './videos.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Video]),
+    StorageModule,
     ChannelsModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],

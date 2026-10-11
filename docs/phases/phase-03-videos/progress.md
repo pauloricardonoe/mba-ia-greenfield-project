@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 9/11 completed
+**SIs:** 10/11 completed
 
 ### SI-03.1 — Dependências, Namespaces de Configuração e Infra no Compose
 - **Status:** completed
@@ -107,8 +107,17 @@
   - **Extensão além do plano:** casos de `stream`/`download` adicionados ao `test/videos.e2e-spec.ts` (a tabela de Tests do SI-03.9 lista só o spec do service) — mesma justificativa dos SIs anteriores.
 
 ### SI-03.10 — Wiring do VideosModule, Autorização e OpenAPI
-- **Status:** pending
-- **Tests:** pending
+- **Status:** completed
+- **Tests:** 95/95 passing (videos.module.spec.ts, openapi-export.integration-spec.ts e a suíte e2e completa: 83 e2e); `tsc --noEmit` exit 0
+- **Observations:**
+  - `VideosModule` completo: imports `TypeOrmModule.forFeature([Video])`, `StorageModule`, `ChannelsModule`, `BullModule` (forRootAsync + registerQueue); controllers `[VideosController]`; providers `[VideosService]`; exports `[TypeOrmModule]`. Registrado no `AppModule`.
+  - **`VideoProcessor` mantido no `WorkerModule`** (ação 1 do plano pedia no `VideosModule`) — **decisão do usuário**: manter a API fora do consumo da fila. O AC deste SI não depende de onde o processor mora.
+  - Swagger: os 6 endpoints têm `@ApiTags`/`@ApiOperation`/`@ApiResponse` (erros com o envelope compartilhado `ApiErrorEnvelope`; `@ApiBearerAuth` nos protegidos). Os DTOs de request usam o plugin do CLI (sem `@ApiProperty` manual); o `VideoResponseDto` tem `@ApiProperty` explícito.
+  - Nenhum endpoint de vídeo usa `@Public()` → herda o guard JWT global (confirmado no e2e: 401 sem token).
+  - `openapi.json` (artefato versionado) regenerado — agora com os 6 paths de vídeo e o schema `VideoResponseDto`.
+  - **Extensão além do plano:** adicionei asserções ao `openapi-export.integration-spec.ts` cobrindo os 6 endpoints de vídeo (documentados + com security) e o schema `VideoResponseDto`, porque o AC exige que o `openapi.json` os inclua.
+  - O e2e de vídeos passou a importar **apenas `AppModule`** (prova o wiring real).
+  - A suíte e2e completa foi rodada porque a mudança é no `AppModule` e afeta todos os specs — tudo verde.
 
 ### SI-03.11 — Documentação da Fase (CLAUDE.md seção de vídeos)
 - **Status:** pending

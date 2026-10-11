@@ -13,6 +13,7 @@ import storageConfig from './config/storage.config';
 import swaggerConfig from './config/swagger.config';
 import { envValidationSchema } from './config/env.validation';
 import { StorageModule } from './storage/storage.module';
+import { VideosModule } from './videos/videos.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { StorageModule } from './storage/storage.module';
     }),
     AuthModule,
     StorageModule,
+    VideosModule,
   ],
   controllers: [AppController],
   providers: [AppService],
