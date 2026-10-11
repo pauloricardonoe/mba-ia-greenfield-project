@@ -5,7 +5,17 @@ export enum VideoStatus {
   ERROR = 'error',
 }
 
+import type { JobsOptions } from 'bullmq';
+
 export const VIDEO_QUEUE = 'video-processing' as const;
+
+export const VIDEO_JOB_NAME = 'process' as const;
+
+/** TD-06: at-least-once with 3 attempts and exponential backoff. */
+export const VIDEO_JOB_OPTIONS: JobsOptions = {
+  attempts: 3,
+  backoff: { type: 'exponential', delay: 5000 },
+};
 
 /** S3 single-object PUT is capped at 5 GiB; the phase caps uploads at 10 GiB. */
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 * 1024;

@@ -1,15 +1,20 @@
 import { randomUUID } from 'node:crypto';
 import { ConfigModule } from '@nestjs/config';
+import { getQueueToken } from '@nestjs/bullmq';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   AbortMultipartUploadCommand,
+  DeleteObjectCommand,
+  HeadObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { Queue } from 'bullmq';
 import { DataSource, Repository } from 'typeorm';
 import { RefreshToken } from '../auth/entities/refresh-token.entity';
 import { VerificationToken } from '../auth/entities/verification-token.entity';
 import { Channel } from '../channels/entities/channel.entity';
+import queueConfig from '../config/queue.config';
 import storageConfig from '../config/storage.config';
 import { StorageModule } from '../storage/storage.module';
 import { StorageService } from '../storage/storage.service';
@@ -20,6 +25,8 @@ import {
 import { User } from '../users/entities/user.entity';
 import { Video } from './entities/video.entity';
 import {
+  InvalidUploadPartsException,
+  UploadNotInitiatedException,
   VideoNotDraftException,
   VideoNotFoundException,
   VideoTooLargeException,
@@ -27,8 +34,10 @@ import {
 import {
   MAX_UPLOAD_BYTES,
   UPLOAD_PART_SIZE,
+  VIDEO_QUEUE,
   VideoStatus,
 } from './videos.constants';
+import { VideosModule } from './videos.module';
 import { VideosService } from './videos.service';
 
 const ALL_ENTITIES = [User, Channel, Video, RefreshToken, VerificationToken];
@@ -51,27 +60,33 @@ describe('VideosService (integration)', () => {
   let dataSource: DataSource;
   let videosService: VideosService;
   let storageService: StorageService;
+  let queue: Queue;
   let client: S3Client;
   let userRepository: Repository<User>;
   let channelRepository: Repository<Channel>;
   let videoRepository: Repository<Video>;
 
   const openUploads: { key: string; uploadId: string }[] = [];
+  const createdObjects: string[] = [];
 
   beforeAll(async () => {
     module = await Test.createTestingModule({
       imports: [
-        ConfigModule.forRoot({ isGlobal: true, load: [storageConfig] }),
+        ConfigModule.forRoot({
+          isGlobal: true,
+          load: [storageConfig, queueConfig],
+        }),
         TypeOrmModule.forRoot(createTestDataSource(ALL_ENTITIES).options),
-        TypeOrmModule.forFeature([Video]),
+        // StorageModule is @Global and registered by AppModule in the app.
         StorageModule,
+        VideosModule,
       ],
-      providers: [VideosService],
     }).compile();
 
     dataSource = module.get(DataSource);
     videosService = module.get(VideosService);
     storageService = module.get(StorageService);
+    queue = module.get<Queue>(getQueueToken(VIDEO_QUEUE));
     client = createVerificationClient();
 
     userRepository = dataSource.getRepository(User);
@@ -82,8 +97,8 @@ describe('VideosService (integration)', () => {
   });
 
   afterAll(async () => {
-    await Promise.all(
-      openUploads.map(({ key, uploadId }) =>
+    await Promise.all([
+      ...openUploads.map(({ key, uploadId }) =>
         client
           .send(
             new AbortMultipartUploadCommand({
@@ -94,13 +109,19 @@ describe('VideosService (integration)', () => {
           )
           .catch(() => undefined),
       ),
-    );
+      ...createdObjects.map((key) =>
+        client
+          .send(new DeleteObjectCommand({ Bucket: videosBucket, Key: key }))
+          .catch(() => undefined),
+      ),
+    ]);
     client.destroy();
     await module.close();
   });
 
   beforeEach(async () => {
     await cleanAllTables(dataSource);
+    await queue.drain();
   });
 
   let counter = 0;
@@ -141,12 +162,7 @@ describe('VideosService (integration)', () => {
     const channel = await createChannel();
     const draft = await videosService.createDraft(channel.id, 'Upload me');
 
-    const sizeBytes = 1024;
-    const result = await videosService.startUpload(
-      draft.id,
-      channel.id,
-      sizeBytes,
-    );
+    const result = await videosService.startUpload(draft.id, channel.id, 1024);
     openUploads.push({ key: result.key, uploadId: result.uploadId });
 
     expect(result.uploadId).toBeTruthy();
@@ -217,6 +233,94 @@ describe('VideosService (integration)', () => {
 
     await expect(
       videosService.startUpload(randomUUID(), channel.id, 1024),
+    ).rejects.toThrow(VideoNotFoundException);
+  });
+
+  it('should complete the upload, move the video to processing and enqueue the job', async () => {
+    const channel = await createChannel();
+    const draft = await videosService.createDraft(channel.id, 'Complete me');
+    const payload = Buffer.from('multipart payload');
+
+    const start = await videosService.startUpload(draft.id, channel.id, 1024);
+    const putResponse = await fetch(start.parts[0].url, {
+      method: 'PUT',
+      body: payload,
+    });
+    expect(putResponse.status).toBe(200);
+    const eTag = putResponse.headers.get('etag');
+    expect(eTag).toBeTruthy();
+    createdObjects.push(draft.source_key);
+
+    const completed = await videosService.completeUpload(
+      draft.id,
+      channel.id,
+      start.uploadId,
+      [{ partNumber: 1, eTag: eTag! }],
+    );
+
+    expect(completed.status).toBe(VideoStatus.PROCESSING);
+
+    const persisted = await videoRepository.findOneByOrFail({ id: draft.id });
+    expect(persisted.status).toBe(VideoStatus.PROCESSING);
+
+    const head = await client.send(
+      new HeadObjectCommand({ Bucket: videosBucket, Key: draft.source_key }),
+    );
+    expect(head.ContentLength).toBe(payload.length);
+
+    const jobs = await queue.getJobs(['waiting', 'delayed', 'active']);
+    const job = jobs.find((candidate) => candidate.data.videoId === draft.id);
+    expect(job).toBeDefined();
+    expect(job?.data.sourceKey).toBe(draft.source_key);
+  });
+
+  it.each([
+    ['an empty parts array', []],
+    ['a part with partNumber 0', [{ partNumber: 0, eTag: '"abc"' }]],
+    ['a part with an empty eTag', [{ partNumber: 1, eTag: '' }]],
+  ])('should reject completion with %s', async (_label, parts) => {
+    const channel = await createChannel();
+    const draft = await videosService.createDraft(channel.id, 'Bad parts');
+
+    await expect(
+      videosService.completeUpload(
+        draft.id,
+        channel.id,
+        'any-upload-id',
+        parts as { partNumber: number; eTag: string }[],
+      ),
+    ).rejects.toThrow(InvalidUploadPartsException);
+  });
+
+  it('should reject completion when no upload is in progress', async () => {
+    const channel = await createChannel();
+    const draft = await videosService.createDraft(channel.id, 'No upload');
+    const start = await videosService.startUpload(draft.id, channel.id, 1024);
+
+    await client.send(
+      new AbortMultipartUploadCommand({
+        Bucket: videosBucket,
+        Key: draft.source_key,
+        UploadId: start.uploadId,
+      }),
+    );
+
+    await expect(
+      videosService.completeUpload(draft.id, channel.id, start.uploadId, [
+        { partNumber: 1, eTag: '"abc"' },
+      ]),
+    ).rejects.toThrow(UploadNotInitiatedException);
+  });
+
+  it("should reject completion for another channel's video", async () => {
+    const owner = await createChannel();
+    const stranger = await createChannel();
+    const draft = await videosService.createDraft(owner.id, 'Private');
+
+    await expect(
+      videosService.completeUpload(draft.id, stranger.id, 'any-upload-id', [
+        { partNumber: 1, eTag: '"abc"' },
+      ]),
     ).rejects.toThrow(VideoNotFoundException);
   });
 });

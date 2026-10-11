@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 5/11 completed
+**SIs:** 6/11 completed
 
 ### SI-03.1 — Dependências, Namespaces de Configuração e Infra no Compose
 - **Status:** completed
@@ -53,8 +53,14 @@
   - O teste E2E do caminho feliz de `upload-urls` deixa um multipart upload incompleto no MinIO (não há helper de abort) — sujeira menor de dev.
 
 ### SI-03.5 — Conclusão do Upload Multipart e Enfileiramento
-- **Status:** pending
-- **Tests:** pending
+- **Status:** completed
+- **Tests:** 34/34 passing (videos.service.integration-spec.ts: 13, videos.module.spec.ts: 1, videos.e2e-spec.ts: 20); `tsc --noEmit` exit 0
+- **Observations:**
+  - **`UPLOAD_NOT_INITIATED` sem coluna de upload_id:** a entidade não tem coluna `upload_id` (Data Model), então não há sinal persistido de "upload iniciado". A detecção é feita no storage: `CompleteMultipartUpload` com uploadId desconhecido/abortado → S3/MinIO devolve `NoSuchUpload` → mapeado para 409. Verificado empiricamente (MinIO devolve `NoSuchUpload` tanto para uploadId aleatório quanto para um abortado).
+  - Caveat: o helper `isNoSuchUpload` também trata um 404 genérico como `NoSuchUpload` (ex.: bucket inexistente viraria 409 em vez de erro). Risco baixo neste setup, mas anotado.
+  - Job enfileirado com nome `process` e opções `attempts: 3` + backoff exponencial 5000 ms (TD-06 / library-refs); payload `{ videoId, sourceKey }` conforme Events/Messages.
+  - **Extensão além do plano:** adicionei os casos de `upload-complete` ao `test/videos.e2e-spec.ts`, embora a tabela de Tests do SI-03.5 liste apenas o spec do service. Justificativa: os ACs são HTTP-level (200/409/400) e o guia de testes exige um teste de wiring de validação por endpoint.
+  - O spec do service passou a importar o `VideosModule` (precisa do provider real da fila) e faz `queue.drain()` no `beforeEach`.
 
 ### SI-03.6 — Fila de Processamento (BullMQ) e Bootstrap do Worker
 - **Status:** completed

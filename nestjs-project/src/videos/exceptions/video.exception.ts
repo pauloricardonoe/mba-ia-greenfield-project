@@ -17,3 +17,15 @@ export class VideoTooLargeException extends DomainException {
     super('VIDEO_TOO_LARGE', 413, 'File exceeds the 10GB limit');
   }
 }
+
+export class UploadNotInitiatedException extends DomainException {
+  constructor() {
+    super('UPLOAD_NOT_INITIATED', 409, 'No upload in progress');
+  }
+}
+
+export class InvalidUploadPartsException extends DomainException {
+  constructor() {
+    super('INVALID_UPLOAD_PARTS', 400, 'Invalid upload parts');
+  }
+}

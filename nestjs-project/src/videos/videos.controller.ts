@@ -19,6 +19,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ChannelsService } from '../channels/channels.service';
 import { ChannelNotFoundException } from '../common/exceptions/domain.exception';
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
+import { CompleteUploadDto } from './dto/complete-upload.dto';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { StartUploadDto } from './dto/start-upload.dto';
 import type { StartUploadResult } from './videos.service';
@@ -144,6 +145,60 @@ export class VideosController {
     const channel = await this.resolveChannel(user.sub);
 
     return this.videosService.startUpload(id, channel.id, dto.sizeBytes);
+  }
+
+  @Post(':id/upload-complete')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Complete a multipart upload',
+    description:
+      'Completes the multipart upload in storage, moves the video to `processing` and enqueues the processing job.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Upload completed and processing enqueued',
+    schema: {
+      properties: {
+        id: { type: 'string', format: 'uuid' },
+        status: { type: 'string', example: 'processing' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid upload parts or validation failed',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Video not found or not owned by the requester',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'No upload in progress for this video',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async completeUpload(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CompleteUploadDto,
+  ): Promise<{ id: string; status: string }> {
+    const channel = await this.resolveChannel(user.sub);
+    const video = await this.videosService.completeUpload(
+      id,
+      channel.id,
+      dto.uploadId,
+      dto.parts,
+    );
+
+    return { id: video.id, status: video.status };
   }
 
   private async resolveChannel(userId: string) {

@@ -220,4 +220,96 @@ describe('Videos (e2e)', () => {
       expect(response.body.error).toBe('VIDEO_NOT_FOUND');
     });
   });
+
+  describe('POST /videos/:id/upload-complete', () => {
+    async function startUpload(id: string) {
+      const response = await post(`/videos/${id}/upload-urls`)
+        .send({ sizeBytes: 1024 })
+        .expect(200);
+
+      return response.body as {
+        uploadId: string;
+        parts: { partNumber: number; url: string }[];
+      };
+    }
+
+    it('should reject a request without an access token', async () => {
+      const id = await createDraft();
+
+      await request(app.getHttpServer())
+        .post(`/videos/${id}/upload-complete`)
+        .send({ uploadId: 'x', parts: [{ partNumber: 1, eTag: '"abc"' }] })
+        .expect(401);
+    });
+
+    it('should reject a missing uploadId', async () => {
+      const id = await createDraft();
+
+      await post(`/videos/${id}/upload-complete`)
+        .send({ parts: [{ partNumber: 1, eTag: '"abc"' }] })
+        .expect(400);
+    });
+
+    it('should reject an empty parts array', async () => {
+      const id = await createDraft();
+
+      await post(`/videos/${id}/upload-complete`)
+        .send({ uploadId: 'x', parts: [] })
+        .expect(400);
+    });
+
+    it('should reject a malformed part', async () => {
+      const id = await createDraft();
+
+      await post(`/videos/${id}/upload-complete`)
+        .send({ uploadId: 'x', parts: [{ partNumber: 0, eTag: '' }] })
+        .expect(400);
+    });
+
+    it('should complete the upload and return processing', async () => {
+      const id = await createDraft();
+      const start = await startUpload(id);
+
+      const putResponse = await fetch(start.parts[0].url, {
+        method: 'PUT',
+        body: Buffer.from('payload'),
+      });
+      expect(putResponse.status).toBe(200);
+      const eTag = putResponse.headers.get('etag');
+      expect(eTag).toBeTruthy();
+
+      const response = await post(`/videos/${id}/upload-complete`)
+        .send({ uploadId: start.uploadId, parts: [{ partNumber: 1, eTag: eTag! }] })
+        .expect(200);
+
+      expect(response.body.id).toBe(id);
+      expect(response.body.status).toBe('processing');
+    });
+
+    it('should return 409 when no upload was started', async () => {
+      const id = await createDraft();
+
+      const response = await post(`/videos/${id}/upload-complete`)
+        .send({
+          uploadId: randomUUID(),
+          parts: [{ partNumber: 1, eTag: '"abc"' }],
+        })
+        .expect(409);
+
+      expect(response.body.error).toBe('UPLOAD_NOT_INITIATED');
+    });
+
+    it("should return 404 for a video owned by another channel", async () => {
+      const otherId = await createDraft(otherAccessToken);
+
+      const response = await post(`/videos/${otherId}/upload-complete`)
+        .send({
+          uploadId: randomUUID(),
+          parts: [{ partNumber: 1, eTag: '"abc"' }],
+        })
+        .expect(404);
+
+      expect(response.body.error).toBe('VIDEO_NOT_FOUND');
+    });
+  });
 });
