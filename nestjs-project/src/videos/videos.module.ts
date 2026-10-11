@@ -3,13 +3,17 @@ import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule } from '@nestjs/config';
 import type { ConfigType } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ChannelsModule } from '../channels/channels.module';
 import queueConfig from '../config/queue.config';
 import { Video } from './entities/video.entity';
 import { VIDEO_QUEUE } from './videos.constants';
+import { VideosController } from './videos.controller';
+import { VideosService } from './videos.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Video]),
+    ChannelsModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [queueConfig.KEY],
@@ -19,5 +23,7 @@ import { VIDEO_QUEUE } from './videos.constants';
     }),
     BullModule.registerQueue({ name: VIDEO_QUEUE }),
   ],
+  controllers: [VideosController],
+  providers: [VideosService],
 })
 export class VideosModule {}

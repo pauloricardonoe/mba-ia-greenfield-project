@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 4/11 completed
+**SIs:** 5/11 completed
 
 ### SI-03.1 — Dependências, Namespaces de Configuração e Infra no Compose
 - **Status:** completed
@@ -38,8 +38,19 @@
   - ACs validados contra MinIO real (imagem Chainguard do SI-03.1).
 
 ### SI-03.4 — Pré-cadastro de Vídeo e Início do Upload Multipart
-- **Status:** pending
-- **Tests:** pending
+- **Status:** completed
+- **Tests:** 21/21 passing (videos.service.integration-spec.ts: 7, videos.module.spec.ts: 1, videos.e2e-spec.ts: 13); `tsc --noEmit` exit 0
+- **Observations:**
+  - **Inconsistência de plano resolvida:** a tabela "Validation Rules — Upload" lista `sizeBytes ≤ 10 GiB` como regra de validação (400), mas o Error Catalog e o AC exigem **413 `VIDEO_TOO_LARGE`** para a mesma condição — só um pode disparar. Honrei o Error Catalog + AC (413): o DTO valida apenas `@IsInt()`/`@Min(1)` e o limite de 10 GiB é checado no service. **Confirmar com o usuário.**
+  - `@Min(1)` no `sizeBytes` não está na regra documentada; adicionado para rejeitar 0/negativo.
+  - Adicionado `ChannelsService.findByUserId` (não existia lookup de canal): usa `dataSource.getRepository(Channel)` para não alterar o construtor do service (e portanto não quebrar os testes existentes de channels).
+  - Adicionado `ChannelNotFoundException` em `src/common/exceptions/domain.exception.ts` (lar estabelecido das exceções de domínio) para o caso invariante "usuário autenticado sem canal" — não estava na lista de exceções do plano.
+  - As 3 exceções de vídeo ficaram em `src/videos/exceptions/video.exception.ts` conforme o plano; notar que a convenção existente do projeto mantém todas as exceções em `common/exceptions/domain.exception.ts` — agora há dois locais.
+  - `ParseUUIDPipe` no `:id` (não previsto no plano): id malformado retorna 400 em vez de 500 do Postgres.
+  - `videos.module.spec.ts` atualizado para espelhar os registros globais do app (`ConfigModule` com `queueConfig` + `storageConfig`, `StorageModule`) — sem isso o `StorageService` não resolve.
+  - O E2E importa `[AppModule, VideosModule]` porque o `VideosModule` só entra no `AppModule` no SI-03.10.
+  - `source_key` é gerado no pré-cadastro (`videos/{videoId}/{uuid}.mp4`, layout do TD-03) porque a coluna é NOT NULL.
+  - O teste E2E do caminho feliz de `upload-urls` deixa um multipart upload incompleto no MinIO (não há helper de abort) — sujeira menor de dev.
 
 ### SI-03.5 — Conclusão do Upload Multipart e Enfileiramento
 - **Status:** pending
