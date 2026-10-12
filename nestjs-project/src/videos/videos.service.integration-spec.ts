@@ -43,6 +43,7 @@ import {
   UPLOAD_PART_SIZE,
   VIDEO_QUEUE,
   VideoStatus,
+  type VideoJobData,
 } from './videos.constants';
 import { VideosModule } from './videos.module';
 import { VideosService } from './videos.service';
@@ -54,7 +55,7 @@ describe('VideosService (integration)', () => {
   let dataSource: DataSource;
   let videosService: VideosService;
   let storageService: StorageService;
-  let queue: Queue;
+  let queue: Queue<VideoJobData>;
   let client: S3Client;
   let userRepository: Repository<User>;
   let channelRepository: Repository<Channel>;
@@ -81,7 +82,7 @@ describe('VideosService (integration)', () => {
     dataSource = module.get(DataSource);
     videosService = module.get(VideosService);
     storageService = module.get(StorageService);
-    queue = module.get<Queue>(getQueueToken(VIDEO_QUEUE));
+    queue = module.get<Queue<VideoJobData>>(getQueueToken(VIDEO_QUEUE));
     client = createS3TestClient();
 
     userRepository = dataSource.getRepository(User);

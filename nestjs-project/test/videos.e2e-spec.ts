@@ -9,11 +9,52 @@ import { AppModule } from '../src/app.module';
 import { AuthService } from '../src/auth/auth.service';
 import { DomainExceptionFilter } from '../src/common/filters/domain-exception.filter';
 import { ValidationExceptionFilter } from '../src/common/filters/validation-exception.filter';
+import { MailService } from '../src/mail/mail.service';
 import { cleanAllTables } from '../src/test/create-test-data-source';
 import { Video } from '../src/videos/entities/video.entity';
 import { MAX_UPLOAD_BYTES, VideoStatus } from '../src/videos/videos.constants';
 
 const PASSWORD = 'password123';
+
+interface VideoDraftBody {
+  id: string;
+  title: string;
+  status: string;
+  createdAt: string;
+}
+
+interface UploadUrlsBody {
+  uploadId: string;
+  key: string;
+  partSize: number;
+  parts: { partNumber: number; url: string }[];
+}
+
+interface UploadCompleteBody {
+  id: string;
+  status: string;
+}
+
+interface VideoMetadataBody {
+  id: string;
+  title: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  thumbnailUrl: string | null;
+}
+
+interface ErrorBody {
+  error: string;
+}
+
+interface LoginBody {
+  access_token: string;
+}
+
+interface StreamUrlBody {
+  url: string;
+}
 
 describe('Videos (e2e)', () => {
   let app: INestApplication<App>;
@@ -67,12 +108,16 @@ describe('Videos (e2e)', () => {
 
   async function registerConfirmedUser(email: string): Promise<string> {
     const authService = app.get(AuthService);
-    const mailServiceInstance = (authService as any).mailService;
+    const authWithMail = authService as unknown as {
+      mailService: MailService;
+    };
+    const mailServiceInstance = authWithMail.mailService;
     let confirmationToken = '';
     jest
       .spyOn(mailServiceInstance, 'sendConfirmationEmail')
-      .mockImplementationOnce(async (_e: string, _n: string, token: string) => {
+      .mockImplementationOnce((_e: string, _n: string, token: string) => {
         confirmationToken = token;
+        return Promise.resolve();
       });
 
     await request(app.getHttpServer())
@@ -90,7 +135,7 @@ describe('Videos (e2e)', () => {
       .send({ email, password: PASSWORD })
       .expect(200);
 
-    return login.body.access_token;
+    return (login.body as LoginBody).access_token;
   }
 
   async function createDraft(token = accessToken): Promise<string> {
@@ -100,7 +145,7 @@ describe('Videos (e2e)', () => {
       .send({ title: 'My video' })
       .expect(201);
 
-    return response.body.id;
+    return (response.body as VideoDraftBody).id;
   }
 
   function post(path: string, token = accessToken) {
@@ -142,10 +187,11 @@ describe('Videos (e2e)', () => {
         .send({ title: 'My video' })
         .expect(201);
 
-      expect(response.body.id).toBeDefined();
-      expect(response.body.title).toBe('My video');
-      expect(response.body.status).toBe('draft');
-      expect(typeof response.body.createdAt).toBe('string');
+      const body = response.body as VideoDraftBody;
+      expect(body.id).toBeDefined();
+      expect(body.title).toBe('My video');
+      expect(body.status).toBe('draft');
+      expect(typeof body.createdAt).toBe('string');
     });
   });
 
@@ -179,12 +225,13 @@ describe('Videos (e2e)', () => {
         .send({ sizeBytes: 1024 })
         .expect(200);
 
-      expect(response.body.uploadId).toBeTruthy();
-      expect(response.body.key).toBeTruthy();
-      expect(response.body.partSize).toBeGreaterThan(0);
-      expect(response.body.parts).toHaveLength(1);
-      expect(response.body.parts[0].partNumber).toBe(1);
-      expect(response.body.parts[0].url).toContain('X-Amz-Signature');
+      const body = response.body as UploadUrlsBody;
+      expect(body.uploadId).toBeTruthy();
+      expect(body.key).toBeTruthy();
+      expect(body.partSize).toBeGreaterThan(0);
+      expect(body.parts).toHaveLength(1);
+      expect(body.parts[0].partNumber).toBe(1);
+      expect(body.parts[0].url).toContain('X-Amz-Signature');
     });
 
     it('should return 413 when sizeBytes exceeds 10 GiB', async () => {
@@ -194,7 +241,7 @@ describe('Videos (e2e)', () => {
         .send({ sizeBytes: MAX_UPLOAD_BYTES + 1 })
         .expect(413);
 
-      expect(response.body.error).toBe('VIDEO_TOO_LARGE');
+      expect((response.body as ErrorBody).error).toBe('VIDEO_TOO_LARGE');
     });
 
     it('should return 409 when the video is not a draft', async () => {
@@ -205,7 +252,7 @@ describe('Videos (e2e)', () => {
         .send({ sizeBytes: 1024 })
         .expect(409);
 
-      expect(response.body.error).toBe('VIDEO_NOT_DRAFT');
+      expect((response.body as ErrorBody).error).toBe('VIDEO_NOT_DRAFT');
     });
 
     it('should return 404 for a video owned by another channel', async () => {
@@ -215,7 +262,7 @@ describe('Videos (e2e)', () => {
         .send({ sizeBytes: 1024 })
         .expect(404);
 
-      expect(response.body.error).toBe('VIDEO_NOT_FOUND');
+      expect((response.body as ErrorBody).error).toBe('VIDEO_NOT_FOUND');
     });
 
     it('should return 404 for a video that does not exist', async () => {
@@ -223,7 +270,7 @@ describe('Videos (e2e)', () => {
         .send({ sizeBytes: 1024 })
         .expect(404);
 
-      expect(response.body.error).toBe('VIDEO_NOT_FOUND');
+      expect((response.body as ErrorBody).error).toBe('VIDEO_NOT_FOUND');
     });
   });
 
@@ -233,10 +280,7 @@ describe('Videos (e2e)', () => {
         .send({ sizeBytes: 1024 })
         .expect(200);
 
-      return response.body as {
-        uploadId: string;
-        parts: { partNumber: number; url: string }[];
-      };
+      return response.body as UploadUrlsBody;
     }
 
     it('should reject a request without an access token', async () => {
@@ -291,8 +335,9 @@ describe('Videos (e2e)', () => {
         })
         .expect(200);
 
-      expect(response.body.id).toBe(id);
-      expect(response.body.status).toBe('processing');
+      const body = response.body as UploadCompleteBody;
+      expect(body.id).toBe(id);
+      expect(body.status).toBe('processing');
     });
 
     it('should return 409 when no upload was started', async () => {
@@ -305,7 +350,7 @@ describe('Videos (e2e)', () => {
         })
         .expect(409);
 
-      expect(response.body.error).toBe('UPLOAD_NOT_INITIATED');
+      expect((response.body as ErrorBody).error).toBe('UPLOAD_NOT_INITIATED');
     });
 
     it('should return 404 for a video owned by another channel', async () => {
@@ -318,7 +363,7 @@ describe('Videos (e2e)', () => {
         })
         .expect(404);
 
-      expect(response.body.error).toBe('VIDEO_NOT_FOUND');
+      expect((response.body as ErrorBody).error).toBe('VIDEO_NOT_FOUND');
     });
   });
 
@@ -334,12 +379,13 @@ describe('Videos (e2e)', () => {
 
       const response = await get(`/videos/${id}`).expect(200);
 
-      expect(response.body.id).toBe(id);
-      expect(response.body.title).toBe('My video');
-      expect(response.body.status).toBe('draft');
-      expect(response.body.thumbnailUrl).toBeNull();
-      expect(typeof response.body.createdAt).toBe('string');
-      expect(typeof response.body.updatedAt).toBe('string');
+      const body = response.body as VideoMetadataBody;
+      expect(body.id).toBe(id);
+      expect(body.title).toBe('My video');
+      expect(body.status).toBe('draft');
+      expect(body.thumbnailUrl).toBeNull();
+      expect(typeof body.createdAt).toBe('string');
+      expect(typeof body.updatedAt).toBe('string');
     });
 
     it('should return a presigned thumbnailUrl for a ready video', async () => {
@@ -351,8 +397,9 @@ describe('Videos (e2e)', () => {
 
       const response = await get(`/videos/${id}`).expect(200);
 
-      expect(response.body.status).toBe('ready');
-      expect(response.body.thumbnailUrl).toContain('X-Amz-Signature');
+      const body = response.body as VideoMetadataBody;
+      expect(body.status).toBe('ready');
+      expect(body.thumbnailUrl).toContain('X-Amz-Signature');
     });
 
     it('should return 404 for a video owned by another channel', async () => {
@@ -360,13 +407,13 @@ describe('Videos (e2e)', () => {
 
       const response = await get(`/videos/${otherId}`).expect(404);
 
-      expect(response.body.error).toBe('VIDEO_NOT_FOUND');
+      expect((response.body as ErrorBody).error).toBe('VIDEO_NOT_FOUND');
     });
 
     it('should return 404 for a video that does not exist', async () => {
       const response = await get(`/videos/${randomUUID()}`).expect(404);
 
-      expect(response.body.error).toBe('VIDEO_NOT_FOUND');
+      expect((response.body as ErrorBody).error).toBe('VIDEO_NOT_FOUND');
     });
   });
 
@@ -393,7 +440,7 @@ describe('Videos (e2e)', () => {
 
       const response = await get(`/videos/${id}/stream`).expect(200);
 
-      expect(response.body.url).toContain('X-Amz-Signature');
+      expect((response.body as StreamUrlBody).url).toContain('X-Amz-Signature');
     });
 
     it('should return a download URL with an attachment disposition', async () => {
@@ -401,7 +448,9 @@ describe('Videos (e2e)', () => {
 
       const response = await get(`/videos/${id}/download`).expect(200);
 
-      expect(decodeURIComponent(response.body.url)).toContain('attachment');
+      expect(
+        decodeURIComponent((response.body as StreamUrlBody).url),
+      ).toContain('attachment');
     });
 
     it.each(['stream', 'download'])(
@@ -411,7 +460,7 @@ describe('Videos (e2e)', () => {
 
         const response = await get(`/videos/${id}/${route}`).expect(409);
 
-        expect(response.body.error).toBe('VIDEO_NOT_READY');
+        expect((response.body as ErrorBody).error).toBe('VIDEO_NOT_READY');
       },
     );
 
@@ -420,7 +469,7 @@ describe('Videos (e2e)', () => {
 
       const response = await get(`/videos/${otherId}/stream`).expect(404);
 
-      expect(response.body.error).toBe('VIDEO_NOT_FOUND');
+      expect((response.body as ErrorBody).error).toBe('VIDEO_NOT_FOUND');
     });
   });
 });
