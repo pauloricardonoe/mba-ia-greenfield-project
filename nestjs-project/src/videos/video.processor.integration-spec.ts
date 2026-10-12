@@ -173,7 +173,7 @@ describe('VideoProcessor (integration)', () => {
 
     expect(processed.duration_seconds).toBeGreaterThan(0);
     expect(processed.metadata).toMatchObject({
-      formatName: expect.stringContaining('mp4'),
+      formatName: expect.stringContaining('mp4') as string,
     });
     expect(processed.thumbnail_key).toBe(`thumbnails/${video.id}.jpg`);
     expect(processed.error_message).toBeNull();

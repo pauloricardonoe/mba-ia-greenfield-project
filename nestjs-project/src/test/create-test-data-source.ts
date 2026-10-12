@@ -1,4 +1,5 @@
 import { DataSource, EntitySchema, MigrationInterface } from 'typeorm';
+import type { Type } from '@nestjs/common';
 
 interface TestDataSourceOptions {
   synchronize?: boolean;
@@ -6,7 +7,7 @@ interface TestDataSourceOptions {
 }
 
 export function createTestDataSource(
-  entities: (Function | string | EntitySchema<any>)[],
+  entities: (Type<unknown> | string | EntitySchema<any>)[],
   options: TestDataSourceOptions = {},
 ): DataSource {
   const { synchronize = true, migrations } = options;
