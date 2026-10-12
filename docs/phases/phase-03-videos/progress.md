@@ -138,7 +138,7 @@
 | Type-check (`npx tsc --noEmit`) | **PASS** — exit 0 |
 | Build (`npm run build`) | **PASS** — exit 0 |
 | Lint (`npm run lint`) | **FAIL** — 234 problems (193 errors, 41 warnings). 187 deles em arquivos que esta fase **não tocou** (incluindo código de produção `src/channels/channels.service.ts`) → baseline pré-existente. Decisão do usuário: deixar como está. |
-| End-to-end manual (upload → processamento → streaming) | **NÃO EXECUTADO** — o servidor da API não foi subido (exige pedido explícito do usuário). |
+| End-to-end manual (upload → processamento → streaming) | **PASS** (2026-10-12) — fluxo completo com API real + container `worker`: register → confirm (token via Mailpit) → login → `POST /videos` (draft) → `upload-urls` (uploadId, partSize 100 MB, 1 parte) → PUT da parte **direto no MinIO** (200 + ETag) → `upload-complete` (processing) → worker processou (ffprobe + thumbnail) → status **`ready`**, `durationSeconds=2`, metadata real (`h264`, 320x240, bitRate) → `thumbnailUrl` pré-assinada (**JPEG válido**, 6656 bytes) → `/stream` com `Range` → **206** (100 bytes) → `/download` → `Content-Disposition: attachment; filename="….mp4"`. Vídeo de teste de 10998 bytes — **o limite de 10 GiB não foi exercitado**. |
 
 **Correções aplicadas na final verification:**
 
@@ -152,6 +152,7 @@
 - **Relação inversa**: `Channel` não tem `@OneToMany(() => Video)` (o plano só especifica o lado owning); decidir se adiciona (exige incluir `Video` nos `DataSource` de teste existentes).
 - **Duplicação de infra**: `WorkerModule` repete o `ConfigModule.forRoot` e o `TypeOrmModule.forRootAsync` do `AppModule` — extrair módulos compartilhados.
 - **Dev compose**: `npm run start:worker` roda `node dist/worker.js`, que exige um `npm run build` prévio (clone limpo quebra o worker).
+- **Dev compose (descoberto no e2e manual)**: `npm run start:dev` (`nest start --watch`, com `deleteOutDir: true`) **apaga o `dist/`** e derruba o container `worker` se ele estiver bootando — o serviço não tem `restart` policy e fica morto em silêncio. Suba o worker **depois** do dev server compilar, ou adicione `restart: unless-stopped` ao serviço.
 - **Conflito de plano**: `sizeBytes > 10 GiB` — Validation Rules pedem 400, Error Catalog/AC pedem 413; implementado 413. Revisar o plano.
 - **Exceções de domínio em dois lugares**: `src/videos/exceptions/` (fase 03) vs `src/common/exceptions/domain.exception.ts` (fase 02).
 - **Thumbnail**: extraída no timestamp de 1s — vídeos com duração < 1s falhariam.
